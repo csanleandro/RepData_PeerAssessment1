@@ -1,0 +1,121 @@
+---
+title: "Reproducible Research-project 1"
+author: "Caridad San Leandro"
+date: "January 14th 2019"
+output: 
+  html_document:
+    keep_md: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Analysis of number of steps walked by a person through the day  
+  
+In this report we are analyzing data about how many steps a person walks through the day. The data we have got was collected in 5-minute intervals for two months, and refers to a single person.  
+  
+Our first step is to load any library we are using:
+```{r librerias, echo=TRUE}
+library(lubridate)
+library(ggplot2)
+```
+  
+  
+((1)) Now for our analysis, first of all we need to unzip, read the file, and prepare de data:  
+
+```{r read_data, echo=TRUE}
+unzip("repdata_data_activity.zip")
+data <- read.csv("activity.csv", header=TRUE,sep=",", na.strings="NA")
+data$fullTime <- ymd_hm(paste(data$date,
+                              as.character(floor(data$interval/100)),
+                              as.character(data$interval - 100* (floor(data$interval/100) ) ),
+                              sep=" "))
+
+data$hour <- floor(data$interval/100) +
+  (100/60)*(data$interval/100-(floor(data$interval/100)))
+
+```
+
+((2)) Our first analysis will be to evaluate how many steps walks a person per day:  
+
+```{r daily_Steps, echo=TRUE, fig.height=3}
+# pasos diarios
+DayTotal <- aggregate(steps ~ date, data=data,FUN=sum)
+hist(DayTotal$steps, main="Daily steps",xlab="Steps")
+# media y mediana pasos diarios
+meanDaySteps <- format(mean(DayTotal$steps,na.rm=TRUE), nsmall=1,scientific = FALSE)
+medianDaySteps <- format(median(DayTotal$steps,na.rm=TRUE), nsmall=1,scientific = FALSE)
+```
+
+((3)) The mean daily steps is **`r meanDaySteps`** and the median is **`r medianDaySteps`**.  
+
+But, how is the evolution during the day? ((4)) This plot show us the average number of steps in each 5-minute interval thorgh the day:  
+```{r mean_IntSteps, echo=TRUE, fig.height=4, results=FALSE}
+#Media por intervalo
+IntMean <- aggregate(steps ~ hour, data=data,FUN=mean)
+
+plot(IntMean,type="l",xaxt="n",xlab="Hour",ylab="Avg steps")
+axis(1,at=seq(from=1,to=23,by=2))
+#El maximo:
+maxInt <- IntMean[IntMean$steps==max(IntMean$steps),]
+text(x=maxInt$hour,y=maxInt$steps, pos=4, labels=paste("Max:",round(maxInt$steps)))
+```
+
+((5)) Here we can see that the interval that contains, on average, greatest number of steps is at **`r maxInt$hour`** hours and has **`r maxInt$steps`** steps on average.  
+  
+But, there are many NAs in our dataset:  
+```{r rev_NAs, echo=TRUE}
+# NAs en el fichero:
+nNAs <- sum(is.na(data$steps))
+pctNAs <- 100* sum(is.na(data$steps))/nrow(data)
+```
+  
+((6)) A total of **`r nNAs`** 5-minute intervals without data, which represents **`r pctNAs` % ** of total.  
+
+((6b) Then, we are estimating those values using the interval average over all days.  
+```{r fill_NAs, echo=TRUE}
+# Estimacion de los NAs:
+# Criterio: la media en ese tramo horario
+dataFill <- data
+
+for (i in 1:nrow(dataFill) ) { 
+  if (is.na(dataFill$steps[i])) {
+    dataFill$steps[i] <- IntMean[IntMean$hour==dataFill$hour[i],"steps"]
+  }
+}
+```
+  
+((7)) And using this new dataset, the daily steps histogram changes a little bit:  
+```{r dif_dayTpe, echo=TRUE, fig.height=3}
+# Con los nuevos datos, pasos diarios:
+DayTotalFill <- aggregate(steps ~ date, data=dataFill,FUN=sum)
+hist(DayTotalFill$steps, main="Daily steps",xlab="steps")
+#Media y mediana del nº de pasos diarios
+mean_dayStepsN <- format(mean(DayTotalFill$steps,na.rm=TRUE), nsmall=1,scientific = FALSE)
+median_dayStepsN <- format(median(DayTotalFill$steps,na.rm=TRUE), nsmall=1,scientific = FALSE)
+```
+
+But new mean and median values are the same or quite the same than they were before fulfilling NAs values: **`r mean_dayStepsN`** and **`r median_dayStepsN`** respectively, (before fulfilling they where: `r meanDaySteps` and `r medianDaySteps`). Why? This is because NAs values are located in a few days, which have no data for any interval. So before fulfilment those days hadn't total value, the full day is stimated using the mean of other days.
+  
+  
+((8)) And finally, let's analyze if there are differences between weekdays and weekend days.  
+```{r dif_dayType, echo=TRUE, fig.height=6}
+# Vamos a ver la distribución por dia de la semana:
+dataFill$dType <- weekdays(dataFill$fullTime)
+dataFill$dType <- replace(dataFill$dType,
+                          which(dataFill$dType %in% c("lunes","martes","miércoles","jueves","viernes")),
+                          "weekday")
+dataFill$dType <- replace(dataFill$dType,
+                          which(dataFill$dType %in% c("sábado","domingo")),
+                          "weekEND")
+
+g <- ggplot(dataFill,aes(hour,steps)) +
+  facet_grid(dType ~ .) +
+  stat_summary(fun.y=mean,geom="line")
+print(g)
+```
+
+And we can see that the distribution actually differs between working days and weekends.  
+  
+  
